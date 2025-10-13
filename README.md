@@ -40,4 +40,7 @@ pre-commit run --all-files
 
 ## CI
 
+См. также: `SECURITY.md`, `.pre-commit-config.yaml`, `.github/workflows/ci.yml`.
+
+P01: bootstrap ready - prepared by DAT
 В репозитории настроен GitHub Actions workflow **CI** (lint → tests → pre-commit).
