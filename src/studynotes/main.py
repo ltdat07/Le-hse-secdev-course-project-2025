@@ -16,7 +16,6 @@ def health():
     return {"status": "ok"}
 
 
-# маршрут для 422 (тест)
 class ValidateIn(BaseModel):
     name: constr(min_length=1)
 
