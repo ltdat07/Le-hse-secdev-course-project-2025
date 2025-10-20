@@ -1,19 +1,41 @@
 from fastapi.testclient import TestClient
 
-from app.main import app
+from studynotes.main import app
 
 client = TestClient(app)
 
 
-def test_not_found_item():
-    r = client.get("/items/999")
+def test_rfc7807_not_found():
+    r = client.get("/__nope__")
     assert r.status_code == 404
     body = r.json()
-    assert "error" in body and body["error"]["code"] == "not_found"
+    for k in (
+        "type",
+        "title",
+        "status",
+        "detail",
+        "correlation_id",
+        "code",
+        "message",
+        "details",
+    ):
+        assert k in body
+    assert body["code"] == "HTTP_ERROR"
 
 
-def test_validation_error():
-    r = client.post("/items", params={"name": ""})
+def test_rfc7807_validation_error():
+    r = client.post("/validate", json={"name": ""})
     assert r.status_code == 422
     body = r.json()
-    assert body["error"]["code"] == "validation_error"
+    for k in (
+        "type",
+        "title",
+        "status",
+        "detail",
+        "correlation_id",
+        "code",
+        "message",
+        "details",
+    ):
+        assert k in body
+    assert body["code"] == "VALIDATION_ERROR"
