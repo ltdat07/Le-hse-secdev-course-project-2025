@@ -1,175 +1,86 @@
-\# ADR-002 — Authentication \& JWT (Argon2id)
+# ADR-002 — Authentication & JWT (Argon2id)
 
-
-
-\*\*Status:\*\* Accepted
-
-\*\*Date:\*\* 2025-10-21
-
-\*\*Author:\*\* @ltdat07
-
-\*\*Supersedes:\*\* —
-
-\*\*Relates to:\*\* NFR-01, NFR-02, NFR-03, R1, R11
-
-\*\*Component:\*\* `auth`, `api`
-
-
+**Status:** Accepted
+**Date:** 2025-10-21
+**Author:** @ltdat07
+**Supersedes:** —
+**Relates to:** NFR-01, NFR-02, NFR-03, R1, R11
+**Component:** `auth`, `api`
 
 ---
 
+## Context
 
-
-\## Context
-
-
-
-В проекте \*\*Study Notes\*\* требуется безопасная авторизация пользователей и защита токенов.
-
+В проекте **Study Notes** требуется безопасная авторизация пользователей и защита токенов.
 Основные риски: утечка паролей, подделка JWT, брутфорс логина.
-
 Согласно NFR и STRIDE:
 
-
-
-\* \*\*NFR-01\*\* — хранение паролей только с `Argon2id`;
-
-\* \*\*NFR-02\*\* — безопасная политика JWT (TTL ≤ 15 мин, HS256/RS256, ротация ключей);
-
-\* \*\*NFR-03\*\* — ограничение логина (≤5 попыток/мин/учётку);
-
-\* \*\*STRIDE:\*\* Spoofing (R1), Tampering (R2), Repudiation (R7), JWT Spoofing (R11).
-
-
+- **NFR-01** — хранение паролей только с `Argon2id`;
+- **NFR-02** — безопасная политика JWT (TTL ≤ 15 мин, HS256/RS256, ротация ключей);
+- **NFR-03** — ограничение логина (≤5 попыток/мин/учётку);
+- **STRIDE:** Spoofing (R1), Tampering (R2), Repudiation (R7), JWT Spoofing (R11).
 
 ---
 
+## Decision
 
+### 1. Пароли
+- Хешируются через `passlib` с `Argon2id`.
+- Параметры: `time_cost=3`, `memory_cost=256MB`, `parallelism=1`.
+- Проверка — unit-тест, что `argon2.verify()` работает корректно.
+- Пароли не логируются и не возвращаются в ответах.
 
-\## Decision
+### 2. JWT
+- Формат: `HS256`, секрет `JWT_SECRET` из `.env`.
+- TTL access-токена — **15 мин** (`JWT_TTL_SECONDS=900`).
+- Payload: `sub`, `exp`, `iat`, `jti`, `iss`, `aud`.
+- Подпись и валидация — библиотека `python-jose`.
+- Ключи ротируются каждые ≤30 дней (`kid` в хедере).
+- Refresh-токен планируется в P07.
 
+### 3. Rate limiting
+- Ограничение логина — ≤5 неуспешных попыток/минуту.
+- При превышении: ответ `429 Too Many Requests`.
+- После окна — попытки разрешены.
+- Проверяется e2e-тестом (BDD из `NFR_BDD.md`).
 
+### 4. Endpoints
+- `POST /auth/register` — регистрация нового пользователя.
+- `POST /auth/login` — выдача JWT.
+- `GET /auth/me` — валидация токена, возврат данных о пользователе.
 
-1\. \*\*Пароли\*\*
-
-&nbsp;  - Хешируются через `passlib` с `Argon2id`.
-
-&nbsp;  - Параметры: `time\_cost=3`, `memory\_cost=256MB`, `parallelism=1`.
-
-&nbsp;  - Проверка — unit-тест, что `argon2.verify()` работает корректно.
-
-&nbsp;  - Пароли не логируются, не возвращаются в ответах.
-
-
-
-2\. \*\*JWT\*\*
-
-&nbsp;  - Формат: `HS256`, секрет `JWT\_SECRET` из `.env`.
-
-&nbsp;  - TTL access-токена — \*\*15 мин\*\* (`JWT\_TTL\_SECONDS=900`).
-
-&nbsp;  - Payload: `sub` (user\_id), `exp`, `iat`, `jti`, `iss`, `aud`.
-
-&nbsp;  - Подпись и валидация — библиотека `python-jose`.
-
-&nbsp;  - Ключи ротируются каждые ≤30 дней (`kid` в хедере).
-
-&nbsp;  - Refresh-токен планируется в P07.
-
-
-
-3\. \*\*Rate limiting\*\*
-
-&nbsp;  - Ограничение логина — ≤5 неуспешных попыток/минуту.
-
-&nbsp;  - При превышении: ответ `429 Too Many Requests`.
-
-&nbsp;  - После окна — попытки разрешены.
-
-&nbsp;  - Проверяется e2e-тестом (BDD из `NFR\_BDD.md`).
-
-
-
-4\. \*\*Endpoints\*\*
-
-&nbsp;  - `POST /auth/register` — регистрация нового пользователя.
-
-&nbsp;  - `POST /auth/login` — выдача JWT.
-
-&nbsp;  - `GET /auth/me` — валидация токена, возврат данных о пользователе.
-
-
-
-5\. \*\*Безопасность\*\*
-
-&nbsp;  - Все запросы по HTTPS.
-
-&nbsp;  - JWT передаётся в `Authorization: Bearer ...`.
-
-&nbsp;  - При неверном токене — `401` с RFC7807-ошибкой.
-
-&nbsp;  - В логах не сохраняются `Authorization` и PII.
-
-
+### 5. Безопасность
+- Все запросы по HTTPS.
+- JWT передаётся в `Authorization: Bearer ...`.
+- При неверном токене — `401` с RFC7807-ошибкой.
+- В логах не сохраняются `Authorization` и PII.
 
 ---
 
-
-
-\## Consequences
-
-
+## Consequences
 
 ✅ Повышена устойчивость к:
-
-\- Брутфорсу (rate-limit);
-
-\- Утечке паролей (Argon2id);
-
-\- Подделке токенов (TTL + key rotation);
-
-\- Неконсистентным форматам ошибок (все через RFC7807).
-
-
+- Брутфорсу (rate-limit);
+- Утечке паролей (Argon2id);
+- Подделке токенов (TTL + key rotation);
+- Неконсистентным форматам ошибок (все через RFC7807).
 
 ⚙️ Увеличены требования к производительности CPU (Argon2id),
-
 но в пределах NFR (t≈3 — допустимо для dev/stage).
 
-
-
 ---
 
+## Links
 
+- **NFR:**
+  - [NFR-01 — Хранение паролей (Argon2id)](../security-nfr/NFR.md)
+  - [NFR-02 — Политика JWT](../security-nfr/NFR.md)
+  - [NFR-03 — Защита логина](../security-nfr/NFR.md)
 
-\## Links
+- **Threat Model:**
+  - [STRIDE — Spoofing / JWT Tampering (R1, R11)](../threat-model/STRIDE.md)
 
-
-
-\* \*\*NFR:\*\*
-
-&nbsp; - \[NFR-01 — Хранение паролей (Argon2id)](../NFR.md)
-
-&nbsp; - \[NFR-02 — Политика JWT](../NFR.md)
-
-&nbsp; - \[NFR-03 — Защита логина](../NFR.md)
-
-
-
-\* \*\*Threat Model:\*\*
-
-&nbsp; - \[STRIDE — Spoofing / JWT Tampering (R1, R11)](../threat-model/STRIDE.md)
-
-
-
-\* \*\*Next Steps:\*\*
-
-&nbsp; - Реализация `/auth/register`, `/auth/login` и JWT utils (`src/studynotes/security.py`)
-
-&nbsp; - Добавление unit и e2e тестов
-
-&nbsp; - Проверка NFR BDD сценариев (ограничение логина, TTL токена)
-
-
-
----
+- **Next Steps:**
+  - Реализация `/auth/register`, `/auth/login` и JWT utils (`src/studynotes/security.py`)
+  - Добавление unit и e2e тестов
+  - Проверка NFR BDD сценариев (ограничение логина, TTL токена)
