@@ -1,9 +1,36 @@
-[tool.ruff]
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "studynotes"
+version = "0.1.0"
+description = "Study Notes MVP (FastAPI)"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "pydantic>=2.7",
+  "SQLAlchemy>=2.0",
+  "python-multipart>=0.0.9",
+  "passlib[bcrypt]>=1.7",
+  "python-jose[cryptography]>=3.3",
+  "argon2-cffi>=23",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
 line-length = 100
-select = ["E","F","W","I"]
-target-version = "py311"
-exclude = ["venv",".venv","build","dist"]
 
 [tool.isort]
 profile = "black"
-line_length = 100
+
+[tool.ruff]
+line-length = 100
+select = ["E","F","I","B","UP","S","SIM","PL","RUF"]
+ignore = ["S105","S106","S107"]
