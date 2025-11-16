@@ -1,57 +1,92 @@
-from pydantic import BaseModel, EmailStr, Field
-from typing import List, Optional
-from pydantic import ConfigDict
+from typing import Optional
 
-# Общая ошибка
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+
 class APIError(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     code: str
     message: str
     details: dict | None = None
 
-# User
+
+# ---------- Пользователи ----------
+
+
 class UserCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
 
+
 class UserOut(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
     id: int
     email: EmailStr
     role: str
-    model_config = ConfigDict(from_attributes=True)
 
-# Auth
+
+# ---------- Auth / токен ----------
+
+
 class Token(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     access_token: str
     token_type: str = "bearer"
 
+
 class LoginIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     email: EmailStr
     password: str
 
-# Tag
+
+# ---------- Теги ----------
+
+
 class TagCreate(BaseModel):
-    name: str
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=64)
+
 
 class TagOut(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
     id: int
     name: str
-    model_config = ConfigDict(from_attributes=True)
 
-# Note
+
+# ---------- Заметки ----------
+
+
 class NoteBase(BaseModel):
-    title: str
-    body: str
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1, max_length=10_000)
+
 
 class NoteCreate(NoteBase):
-    tags: List[str] | None = None
+    tags: list[str] = Field(default_factory=list)
+
 
 class NotePatch(BaseModel):
-    title: Optional[str] = None
-    body: Optional[str] = None
-    tags: Optional[List[str]] = None
+    model_config = ConfigDict(extra="forbid")
+
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    body: Optional[str] = Field(default=None, min_length=1, max_length=10_000)
+    tags: Optional[list[str]] = None
+
 
 class NoteOut(NoteBase):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
     id: int
     owner_id: int
-    tags: list[str] = []
-    model_config = ConfigDict(from_attributes=True)
+    tags: list[str] = Field(default_factory=list)
