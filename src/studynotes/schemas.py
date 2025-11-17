@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class APIError(BaseModel):
@@ -45,6 +45,14 @@ class TagCreate(BaseModel):
 
     name: str = Field(min_length=1, max_length=64)
 
+    @field_validator("name")
+    @classmethod
+    def strip_and_normalize(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Tag name must not be empty")
+        return value
+
 
 class TagOut(BaseModel):
     model_config = ConfigDict(extra="forbid", from_attributes=True)
@@ -61,7 +69,7 @@ class NoteBase(BaseModel):
 
 
 class NoteCreate(NoteBase):
-    tags: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list, max_length=20)
 
 
 class NotePatch(BaseModel):

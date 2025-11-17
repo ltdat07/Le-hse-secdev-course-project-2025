@@ -46,7 +46,7 @@ jobs:
         env:
           PYTHONPATH: src
           JWT_SECRET: ci_super_secret_1234567890
-        run: pytest -q --cov=src/studynotes --cov-report=term-missing --cov-fail-under=60
+        run: pytest -q --cov=src/studynotes --cov-report=term-missing --cov-fail-under=80
 
       - name: Lint Dockerfile with hadolint
         uses: hadolint/hadolint-action@v3.1.0

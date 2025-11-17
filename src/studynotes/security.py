@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
@@ -12,6 +13,8 @@ from sqlalchemy.orm import Session
 
 from .database import get_db
 from .models import User
+
+logger = logging.getLogger("studynotes")
 
 MIN_JWT_SECRET_LENGTH = 8
 
@@ -35,6 +38,18 @@ def verify_password(password: str, hashed: str) -> bool:
 
 ALGORITHM = "HS256"
 DEFAULT_TTL_SECONDS = 60 * 60
+
+
+def mask_email(email: str) -> str:
+    try:
+        local, domain = email.split("@", 1)
+    except ValueError:
+        return "***"
+    if len(local) <= 2:
+        masked_local = "*" * len(local)
+    else:
+        masked_local = local[0] + "*" * (len(local) - 2) + local[-1]
+    return f"{masked_local}@{domain}"
 
 
 def _get_jwt_secret() -> str:
@@ -153,6 +168,16 @@ def problem_details_exception_handler(
     exc: ProblemDetailsException,
 ) -> JSONResponse:
     correlation_id = str(uuid4())
+
+    logger.warning(
+        "problem_details status=%s code=%s corr_id=%s method=%s path=%s",
+        exc.status_code,
+        exc.code,
+        correlation_id,
+        request.method,
+        request.url.path,
+    )
+
     body = {
         "type": exc.type_,
         "title": exc.title,
