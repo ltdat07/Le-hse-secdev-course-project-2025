@@ -19,9 +19,9 @@ _pwd_ctx = CryptContext(
     schemes=["argon2"],
     default="argon2",
     deprecated="auto",
-    argon2_memory_cost=262_144,
-    argon2_time_cost=3,
-    argon2_parallelism=1,
+    argon2__memory_cost=262_144,
+    argon2__time_cost=3,
+    argon2__parallelism=1,
 )
 
 
