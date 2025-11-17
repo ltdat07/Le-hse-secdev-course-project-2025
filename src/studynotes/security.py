@@ -40,7 +40,8 @@ DEFAULT_TTL_SECONDS = 60 * 60
 def _get_jwt_secret() -> str:
     secret = os.getenv("JWT_SECRET")
     if not secret:
-        secret = "dev-insecure-secret-change-me"
+
+        raise RuntimeError("JWT_SECRET environment variable must be set")
 
     if len(secret) < MIN_JWT_SECRET_LENGTH:
         raise RuntimeError(
