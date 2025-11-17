@@ -19,10 +19,9 @@ _pwd_ctx = CryptContext(
     schemes=["argon2"],
     default="argon2",
     deprecated="auto",
-    argon2__memory_cost=262_144,
-    argon2__time_cost=3,
-    argon2__memory_cost=262_144,
-    argon2__parallelism=1,
+    argon2_memory_cost=262_144,
+    argon2_time_cost=3,
+    argon2_parallelism=1,
 )
 
 
@@ -41,7 +40,6 @@ DEFAULT_TTL_SECONDS = 60 * 60
 def _get_jwt_secret() -> str:
     secret = os.getenv("JWT_SECRET")
     if not secret:
-
         raise RuntimeError("JWT_SECRET environment variable must be set")
 
     if len(secret) < MIN_JWT_SECRET_LENGTH:
