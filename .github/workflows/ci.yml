@@ -23,7 +23,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           # установка приложения + email-validator
-          pip install -e . "pydantic[email]" pytest
+          pip install -e . "pydantic[email]" pytest httpx
 
       - name: Run pytest
         env:
