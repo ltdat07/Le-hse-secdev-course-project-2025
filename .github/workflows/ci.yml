@@ -1,23 +1,48 @@
-name: ci
-on: [push, pull_request]
+name: CI
+
+on:
+  push:
+    branches: [ main, "p**" ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
-  test:
+  tests-and-image:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install deps
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e .
-          pip install pytest httpx "pydantic[email]" email-validator
+          # установка приложения + email-validator
+          pip install -e . "pydantic[email]" pytest
 
-      - name: Run tests
+      - name: Run pytest
         env:
           PYTHONPATH: src
-          JWT_SECRET: test_secret_for_ci
         run: pytest -q
+
+      - name: Lint Dockerfile with hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: error
+
+      - name: Build Docker image for CI
+        run: docker build -t studynotes:ci -f Dockerfile .
+
+      - name: Run Trivy image scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: studynotes:ci
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true

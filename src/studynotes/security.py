@@ -11,16 +11,14 @@ from sqlalchemy.orm import Session
 from .database import get_db
 from .models import User
 
-# Секрет читаем из ENV, чтобы тесты могли monkeypatch'ить JWT_SECRET
 SECRET = os.getenv("JWT_SECRET", "change-me")
 ALGO = "HS256"
 
-# Argon2 (мягко: t=3, m=262144, p=1 — под тесты вида $argon2id$v=19$m=262144,t=3,p=1$...)
 pwd_ctx = CryptContext(
     schemes=["argon2"],
     deprecated="auto",
     argon2__time_cost=3,
-    argon2__memory_cost=262_144,  # KiB
+    argon2__memory_cost=262_144,
     argon2__parallelism=1,
 )
 
@@ -65,7 +63,7 @@ def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_
     try:
         secret = os.getenv("JWT_SECRET", SECRET)
         payload = jwt.decode(token, secret, algorithms=[ALGO])
-        email: str = payload.get("sub")  # в нашем токене sub = email
+        email: str = payload.get("sub")
         if not email:
             raise cred_exc
     except JWTError:
