@@ -21,10 +21,8 @@ from .security import (
 
 app = FastAPI(title="Study Notes API", version="1.0")
 
-# Инициализация схем БД (MVP)
 Base.metadata.create_all(bind=engine)
 
-# ---------- RFC7807 helpers ----------
 def _code_by_status(status: int) -> str:
     return {
         400: "BAD_REQUEST",
@@ -64,7 +62,6 @@ def problem_json_ext(
     return JSONResponse(status_code=status, content=body, media_type="application/problem+json")
 
 
-# Корреляционный id на каждый запрос
 @app.middleware("http")
 async def attach_correlation_id(request: Request, call_next):
     request.state.correlation_id = str(uuid4())
@@ -115,30 +112,25 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
-# ---------- Health ----------
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
 
-# Оставим и старый путь на всякий
 @app.get("/healthz")
 def healthz():
     return {"status": "ok"}
 
 
-# ---------- Test helper route for 422 ----------
 class ValidateIn(BaseModel):
     name: str = Field(min_length=1)
 
 
 @app.post("/validate")
 def validate_endpoint(_body: ValidateIn):
-    # Если прошло – 204
     return JSONResponse(status_code=204, content=None)
 
 
-# ---------- Auth ----------
 @app.post("/api/v1/auth/register", response_model=UserOut)
 def register(payload: UserCreate, db: Session = Depends(get_db)):
     exists = db.query(User).filter(User.email == payload.email).first()
@@ -160,7 +152,6 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
     return {"access_token": token}
 
 
-# ---------- Tags ----------
 @app.post("/api/v1/tags", response_model=TagOut)
 def create_tag(body: TagCreate, _: User = Depends(get_current_user), db: Session = Depends(get_db)):
     name = body.name.strip()
@@ -184,7 +175,6 @@ def list_tags(
     return db.query(Tag).order_by(Tag.name).limit(limit).offset(offset).all()
 
 
-# ---------- Notes ----------
 def _ensure_tags(db: Session, names: Optional[list[str]]):
     if not names:
         return []
@@ -285,7 +275,6 @@ def delete_note(note_id: int, user: User = Depends(get_current_user), db: Sessio
     return JSONResponse(status_code=204, content=None)
 
 
-# --- Admin example ---
 @app.get("/api/v1/admin/users", response_model=list[UserOut])
 def adm_list_users(_: User = Depends(require_admin), db: Session = Depends(get_db)):
     return db.query(User).all()
