@@ -1,19 +1,18 @@
-from __future__ import annotations
+import logging
+from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
-from typing import List, Optional
-
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, status, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from fastapi.openapi.utils import get_openapi
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from uuid import uuid4
-from typing import Any
+
 from .database import Base, engine, get_db
 from .models import Note, NoteTag, Tag, User
 from .schemas import (
+    LoginIn,
     NoteCreate,
     NoteOut,
     NotePatch,
@@ -24,6 +23,7 @@ from .schemas import (
     UserOut,
 )
 from .security import (
+    ProblemDetailsException,
     create_access_token,
     get_current_user,
     hash_password,
@@ -31,141 +31,153 @@ from .security import (
     verify_password,
 )
 
-def _json_safe(value: Any) -> Any:
-    if isinstance(value, (str, int, float, bool)) or value is None:
-        return value
-    if isinstance(value, (bytes, bytearray)):
-        try:
-            return value.decode("utf-8", errors="replace")
-        except Exception:
-            return repr(value)
-    if isinstance(value, dict):
-        return {k: _json_safe(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple, set)):
-        return [_json_safe(v) for v in value]
-    return str(value)
+logger = logging.getLogger("studynotes")
 
-# ---------------------------------------------------------------------------
-# FastAPI app
-# ---------------------------------------------------------------------------
 
-app = FastAPI(
-    title="Study Notes API",
-    version="1.0.0",
-    swagger_ui_parameters={"persistAuthorization": True},
-)
+app = FastAPI(title="Study Notes API", version="1.0")
 
 Base.metadata.create_all(bind=engine)
 
 
-# ---------------------------------------------------------------------------
-# RFC7807 helpers / error handlers
-# ---------------------------------------------------------------------------
+def _code_by_status(status: int) -> str:
+    return {
+        400: "BAD_REQUEST",
+        401: "UNAUTHORIZED",
+        403: "FORBIDDEN",
+        404: "NOT_FOUND",
+        405: "METHOD_NOT_ALLOWED",
+        409: "CONFLICT",
+        422: "VALIDATION_ERROR",
+        500: "INTERNAL_SERVER_ERROR",
+    }.get(status, "HTTP_ERROR")
 
 
-def _problem(
+def problem_json_ext(
     *,
-    request: Request,
-    status_code: int,
+    status: int,
     title: str,
     detail: str,
-    code: str,
-    details: dict | None = None,
-) -> dict:
-    return {
-        "type": "about:blank",
+    instance: str,
+    correlation_id: str,
+    type_: str = "about:blank",
+    code: str | None = None,
+    message: str | None = None,
+    details: Dict[str, Any] | None = None,
+) -> JSONResponse:
+    body = {
+        "type": type_,
         "title": title,
-        "status": status_code,
+        "status": status,
         "detail": detail,
-        "instance": str(request.url),
-        "correlation_id": str(uuid4()),
-        "code": code,
-        "message": title,
+        "instance": instance,
+        "correlation_id": correlation_id,
+        "code": code or _code_by_status(status),
+        "message": message or (detail or title),
         "details": details or {},
     }
+    return JSONResponse(status_code=status, content=body, media_type="application/problem+json")
+
+
+@app.middleware("http")
+async def attach_correlation_id(request: Request, call_next):
+    cid = getattr(request.state, "correlation_id", None) or str(uuid4())
+    request.state.correlation_id = cid
+
+    try:
+        response = await call_next(request)
+    except StarletteHTTPException as exc:
+        title = {404: "Not Found", 403: "Forbidden", 401: "Unauthorized"}.get(
+            exc.status_code, "HTTP Error"
+        )
+        detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+
+        code: str | None = None
+        if exc.status_code == 404:
+            if request.url.path.startswith("/api/v1/notes/"):
+                code = "NOT_FOUND"
+            else:
+                code = "HTTP_ERROR"
+
+        response = problem_json_ext(
+            status=exc.status_code,
+            title=title,
+            detail=detail,
+            instance=str(request.url),
+            correlation_id=cid,
+            code=code,
+        )
+
+    logger.info(
+        "request",
+        extra={
+            "correlation_id": cid,
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+        },
+    )
+
+    return response
 
 
 @app.exception_handler(StarletteHTTPException)
-async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    if isinstance(exc.detail, dict):
-        body = dict(exc.detail)
-        body.setdefault("type", "about:blank")
-        body.setdefault("title", body.get("message", body.get("code", "Error")))
-        body.setdefault("status", exc.status_code)
-        body.setdefault("detail", body.get("message", ""))
-        body.setdefault("instance", str(request.url))
-        body.setdefault("correlation_id", str(uuid4()))
-        body.setdefault("details", body.get("details") or {})
-    else:
-        body = _problem(
-            request=request,
-            status_code=exc.status_code,
-            title=str(exc.detail),
-            detail=str(exc.detail),
-            code="HTTP_ERROR",
-        )
+async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    cid = getattr(request.state, "correlation_id", str(uuid4()))
+    title = {404: "Not Found", 403: "Forbidden", 401: "Unauthorized"}.get(
+        exc.status_code, "HTTP Error"
+    )
+    detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
 
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=body,
-        media_type="application/problem+json",
+    code: str | None = None
+    if exc.status_code == 404:
+        if request.url.path.startswith("/api/v1/notes/"):
+            code = "NOT_FOUND"
+        else:
+            code = "HTTP_ERROR"
+
+    return problem_json_ext(
+        status=exc.status_code,
+        title=title,
+        detail=detail,
+        instance=str(request.url),
+        correlation_id=cid,
+        code=code,
     )
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(
-    request: Request,
-    exc: RequestValidationError,
-) -> JSONResponse:
-    correlation_id = str(uuid4())
-
-    raw_errors = exc.errors()
-    safe_errors = _json_safe(raw_errors)
-    safe_body = _json_safe(getattr(exc, "body", None))
-
-    detail_msg = "Request validation failed"
-    if isinstance(raw_errors, list) and raw_errors:
-        first = raw_errors[0]
-        msg = first.get("msg")
-        if isinstance(msg, str) and msg:
-            detail_msg = msg
-
-    content = {
-        "type": "about:blank",
-        "title": "Unprocessable Entity",
-        "status": status.HTTP_422_UNPROCESSABLE_ENTITY,
-        "detail": detail_msg,
-        "instance": str(request.url),
-        "correlation_id": correlation_id,
-        "code": "VALIDATION_ERROR",
-        "message": "Request validation failed",
-        "details": {
-            "errors": safe_errors,
-            "body": safe_body,
-        },
-    }
-
-    return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content=content,
-        media_type="application/problem+json",
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    cid = getattr(request.state, "correlation_id", str(uuid4()))
+    return problem_json_ext(
+        status=422,
+        title="Validation Error",
+        detail="Invalid request body/parameters",
+        type_="https://example.com/probs/validation-error",
+        instance=str(request.url),
+        correlation_id=cid,
+        code="VALIDATION_ERROR",
+        message="Validation failed",
+        details={"errors": exc.errors()},
     )
 
 
-
-# Эндпоинт для теста валидации
-class ValidateIn(BaseModel):
-    name: str = Field(min_length=1)
-
-
-@app.post("/validate")
-def validate_name(body: ValidateIn):
-    return {"ok": True}
-
-
-# ---------------------------------------------------------------------------
-# Healthcheck
-# ---------------------------------------------------------------------------
+@app.exception_handler(ProblemDetailsException)
+async def problem_details_exception_handler(
+    request: Request,
+    exc: ProblemDetailsException,
+) -> JSONResponse:
+    cid = getattr(request.state, "correlation_id", str(uuid4()))
+    return problem_json_ext(
+        status=exc.status_code,
+        title=exc.title or "Error",
+        detail=exc.message,
+        type_=exc.type_ or "about:blank",
+        instance=str(request.url),
+        correlation_id=cid,
+        code=exc.code,
+        message=exc.message,
+        details=exc.details or {},
+    )
 
 
 @app.get("/health")
@@ -173,24 +185,25 @@ def health():
     return {"status": "ok"}
 
 
-# ---------------------------------------------------------------------------
-# Auth
-# ---------------------------------------------------------------------------
+@app.get("/healthz")
+def healthz():
+    return {"status": "ok"}
+
+
+class ValidateIn(BaseModel):
+    name: str = Field(min_length=1)
+
+
+@app.post("/validate")
+def validate_endpoint(_body: ValidateIn):
+    return JSONResponse(status_code=204, content=None)
 
 
 @app.post("/api/v1/auth/register", response_model=UserOut)
 def register(payload: UserCreate, db: Session = Depends(get_db)):
     exists = db.query(User).filter(User.email == payload.email).first()
     if exists:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "code": "EMAIL_TAKEN",
-                "message": "Email already registered",
-                "details": {},
-            },
-        )
-
+        raise HTTPException(status_code=400, detail="Email already registered")
     user = User(email=payload.email, hashed_password=hash_password(payload.password))
     db.add(user)
     db.commit()
@@ -199,38 +212,20 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
 
 
 @app.post("/api/v1/auth/login", response_model=Token)
-def login(payload: UserCreate, db: Session = Depends(get_db)):
+def login(payload: LoginIn, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "code": "INVALID_CREDENTIALS",
-                "message": "Incorrect email or password",
-                "details": {},
-            },
-        )
-
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
     token = create_access_token(sub=user.email)
-    return {"access_token": token, "token_type": "bearer"}
-
-
-# ---------------------------------------------------------------------------
-# Tags
-# ---------------------------------------------------------------------------
+    return {"access_token": token}
 
 
 @app.post("/api/v1/tags", response_model=TagOut)
-def create_tag(
-    body: TagCreate,
-    _: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def create_tag(body: TagCreate, _: User = Depends(get_current_user), db: Session = Depends(get_db)):
     name = body.name.strip()
     tag = db.query(Tag).filter(Tag.name == name).first()
     if tag:
         return tag
-
     tag = Tag(name=name)
     db.add(tag)
     db.commit()
@@ -248,19 +243,12 @@ def list_tags(
     return db.query(Tag).order_by(Tag.name).limit(limit).offset(offset).all()
 
 
-# ---------------------------------------------------------------------------
-# Notes
-# ---------------------------------------------------------------------------
-
-
 def _ensure_tags(db: Session, names: Optional[list[str]]):
     if not names:
         return []
-    tags: list[Tag] = []
+    tags = []
     for raw in names:
         name = raw.strip()
-        if not name:
-            continue
         t = db.query(Tag).filter(Tag.name == name).first()
         if not t:
             t = Tag(name=name)
@@ -272,20 +260,15 @@ def _ensure_tags(db: Session, names: Optional[list[str]]):
 
 @app.post("/api/v1/notes", response_model=NoteOut)
 def create_note(
-    body: NoteCreate,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    body: NoteCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     note = Note(title=body.title, body=body.body, owner_id=user.id)
     db.add(note)
     db.flush()
-
     for t in _ensure_tags(db, body.tags):
         db.add(NoteTag(note_id=note.id, tag_id=t.id))
-
     db.commit()
     db.refresh(note)
-
     return NoteOut(
         id=note.id,
         title=note.title,
@@ -296,22 +279,10 @@ def create_note(
 
 
 @app.get("/api/v1/notes/{note_id}", response_model=NoteOut)
-def get_note(
-    note_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def get_note(note_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     note = db.get(Note, note_id)
     if not note or (note.owner_id != user.id and user.role != "admin"):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "code": "NOT_FOUND",
-                "message": "Note not found",
-                "details": {},
-            },
-        )
-
+        raise HTTPException(status_code=404, detail="Note not found")
     return NoteOut(
         id=note.id,
         title=note.title,
@@ -330,21 +301,14 @@ def list_notes(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ):
-    query = db.query(Note)
-
-    if user.role != "admin":
-        query = query.filter(Note.owner_id == user.id)
-
+    query = db.query(Note).filter((Note.owner_id == user.id) | (user.role == "admin"))
     if tag:
         query = query.join(NoteTag).join(Tag).filter(Tag.name == tag)
-
     if q:
         like = f"%{q}%"
         query = query.filter((Note.title.like(like)) | (Note.body.like(like)))
-
     items = query.order_by(Note.id.desc()).limit(limit).offset(offset).all()
-
-    out: list[NoteOut] = []
+    out = []
     for n in items:
         out.append(
             NoteOut(
@@ -367,40 +331,18 @@ def patch_note(
 ):
     note = db.get(Note, note_id)
     if not note or (note.owner_id != user.id and user.role != "admin"):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "code": "NOT_FOUND",
-                "message": "Note not found",
-                "details": {},
-            },
-        )
-
+        raise HTTPException(status_code=404, detail="Note not found")
     if body.title is not None:
         note.title = body.title
     if body.body is not None:
         note.body = body.body
-
     if body.tags is not None:
         for nt in list(note.tags):
             db.delete(nt)
-
-        db.flush()
-
-        new_names: list[str] = []
-        if body.tags:
-            for raw in body.tags:
-                name = raw.strip()
-                if name and name not in new_names:
-                    new_names.append(name)
-
-        for t in _ensure_tags(db, new_names):
+        for t in _ensure_tags(db, body.tags):
             db.add(NoteTag(note_id=note.id, tag_id=t.id))
-
-
     db.commit()
     db.refresh(note)
-
     return NoteOut(
         id=note.id,
         title=note.title,
@@ -410,51 +352,18 @@ def patch_note(
     )
 
 
-@app.delete("/api/v1/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_note(note_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+@app.delete("/api/v1/notes/{note_id}", status_code=204)
+def delete_note(
+    note_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
     note = db.get(Note, note_id)
     if not note or (note.owner_id != user.id and user.role != "admin"):
-        raise HTTPException(
-            status_code=404,
-            detail={"code": "NOT_FOUND", "message": "Note not found", "details": {}},
-        )
+        raise HTTPException(status_code=404, detail="Note not found")
     db.delete(note)
     db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
+    return JSONResponse(status_code=204, content=None)
 
 
 @app.get("/api/v1/admin/users", response_model=list[UserOut])
-def adm_list_users(
-    _: User = Depends(require_admin),
-    db: Session = Depends(get_db),
-):
+def adm_list_users(_: User = Depends(require_admin), db: Session = Depends(get_db)):
     return db.query(User).all()
-
-
-
-def custom_openapi():
-    if app.openapi_schema:
-        return app.openapi_schema
-
-    openapi_schema = get_openapi(
-        title=app.title,
-        version=app.version,
-        description="Study Notes API",
-        routes=app.routes,
-    )
-
-    components = openapi_schema.get("components", {})
-    security_schemes = components.get("securitySchemes", {})
-    if "OAuth2PasswordBearer" in security_schemes:
-        security_schemes["OAuth2PasswordBearer"] = {
-            "type": "http",
-            "scheme": "bearer",
-            "bearerFormat": "JWT",
-        }
-
-    app.openapi_schema = openapi_schema
-    return app.openapi_schema
-
-
-app.openapi = custom_openapi

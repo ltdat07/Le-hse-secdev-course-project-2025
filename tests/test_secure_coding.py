@@ -1,4 +1,3 @@
-import os
 from uuid import uuid4
 
 import pytest
@@ -59,9 +58,7 @@ def test_create_note_rejects_extra_field():
     body = r.json()
     assert body["status"] == 422
     assert body["code"] == "VALIDATION_ERROR"
-    assert "extra" in str(body["details"]).lower() or "unexpected" in str(
-        body["details"]
-    ).lower()
+    assert "extra" in str(body["details"]).lower() or "unexpected" in str(body["details"]).lower()
 
 
 def test_get_nonexistent_note_rfc7807():

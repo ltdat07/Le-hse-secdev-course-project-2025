@@ -11,9 +11,6 @@ class APIError(BaseModel):
     details: dict | None = None
 
 
-# ---------- Пользователи ----------
-
-
 class UserCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -27,9 +24,6 @@ class UserOut(BaseModel):
     id: int
     email: EmailStr
     role: str
-
-
-# ---------- Auth / токен ----------
 
 
 class Token(BaseModel):
@@ -46,9 +40,6 @@ class LoginIn(BaseModel):
     password: str
 
 
-# ---------- Теги ----------
-
-
 class TagCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -60,9 +51,6 @@ class TagOut(BaseModel):
 
     id: int
     name: str
-
-
-# ---------- Заметки ----------
 
 
 class NoteBase(BaseModel):

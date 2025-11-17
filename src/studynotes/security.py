@@ -15,8 +15,6 @@ from .models import User
 
 MIN_JWT_SECRET_LENGTH = 8
 
-# ---------------- Пароли: Argon2 ----------------
-
 _pwd_ctx = CryptContext(
     schemes=["argon2"],
     default="argon2",
@@ -26,17 +24,18 @@ _pwd_ctx = CryptContext(
     argon2__parallelism=1,
 )
 
+
 def hash_password(password: str) -> str:
     return _pwd_ctx.hash(password)
+
 
 def verify_password(password: str, hashed: str) -> bool:
     return _pwd_ctx.verify(password, hashed)
 
 
-# ---------------- JWT ----------------
-
 ALGORITHM = "HS256"
 DEFAULT_TTL_SECONDS = 60 * 60
+
 
 def _get_jwt_secret() -> str:
     secret = os.getenv("JWT_SECRET")
@@ -81,13 +80,13 @@ def create_access_token(
     )
     return token
 
+
 def decode_access_token(token: str) -> Dict[str, Any]:
     return jwt.decode(token, _get_jwt_secret(), algorithms=[ALGORITHM])
 
 
-# ---------------- AuthN/AuthZ ----------------
-
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
 
 def get_current_user(
     db: Session = Depends(get_db),
@@ -115,6 +114,7 @@ def get_current_user(
         raise cred_exc
 
     return user
+
 
 def require_admin(user: User = Depends(get_current_user)) -> User:
     if user.role != "admin":
@@ -146,6 +146,7 @@ class ProblemDetailsException(Exception):
         self.title = title or message
         self.type_ = type_ or "about:blank"
         self.details = details or {}
+
 
 def problem_details_exception_handler(
     request: Request,
