@@ -10,6 +10,7 @@ class APIError(BaseModel):
     message: str
     details: dict | None = None
 
+
 class UserCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -24,6 +25,7 @@ class UserOut(BaseModel):
     email: EmailStr
     role: str
 
+
 class Token(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -37,6 +39,7 @@ class LoginIn(BaseModel):
     email: EmailStr
     password: str
 
+
 class TagCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -48,6 +51,7 @@ class TagOut(BaseModel):
 
     id: int
     name: str
+
 
 class NoteBase(BaseModel):
     model_config = ConfigDict(extra="forbid")

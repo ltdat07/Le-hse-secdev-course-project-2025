@@ -38,6 +38,7 @@ app = FastAPI(title="Study Notes API", version="1.0")
 
 Base.metadata.create_all(bind=engine)
 
+
 def _code_by_status(status: int) -> str:
     return {
         400: "BAD_REQUEST",
