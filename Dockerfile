@@ -8,12 +8,12 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=on \
 
 WORKDIR /app
 
-COPY pyproject.toml ./
+COPY pyproject.toml .
 COPY src ./src
 
 RUN --mount=type=cache,target=/root/.cache \
     python -m pip install --upgrade pip && \
-    pip wheel --no-cache-dir --no-deps --wheel-dir=/wheels .
+    pip wheel --no-deps --wheel-dir=/wheels .
 
 FROM python:3.12-slim AS runtime
 
@@ -33,7 +33,6 @@ COPY --from=build /wheels /wheels
 RUN pip install --no-cache-dir /wheels/*
 
 COPY src ./src
-
 RUN chown -R app:app /app
 
 USER app

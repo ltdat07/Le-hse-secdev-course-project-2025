@@ -1,38 +1,27 @@
-from typing import Any, Dict, List, Optional
+from typing import List, Optional, Dict, Any
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, Depends, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from sqlalchemy.orm import Session
+from pydantic import BaseModel, Field
 
 from .database import Base, engine, get_db
-from .models import Note, NoteTag, Tag, User
+from .models import User, Note, Tag, NoteTag
 from .schemas import (
-    LoginIn,
-    NoteCreate,
-    NoteOut,
-    NotePatch,
-    TagCreate,
-    TagOut,
-    Token,
-    UserCreate,
-    UserOut,
+    APIError, UserCreate, UserOut, Token, LoginIn,
+    NoteCreate, NotePatch, NoteOut, TagCreate, TagOut
 )
 from .security import (
-    create_access_token,
-    get_current_user,
-    hash_password,
-    require_admin,
-    verify_password,
+    hash_password, verify_password, create_access_token,
+    get_current_user, require_admin
 )
 
 app = FastAPI(title="Study Notes API", version="1.0")
 
 Base.metadata.create_all(bind=engine)
-
 
 def _code_by_status(status: int) -> str:
     return {
@@ -81,35 +70,32 @@ async def attach_correlation_id(request: Request, call_next):
         return response
     except StarletteHTTPException as exc:
         cid = getattr(request.state, "correlation_id", str(uuid4()))
-        title = {404: "Not Found", 403: "Forbidden", 401: "Unauthorized"}.get(
-            exc.status_code, "HTTP Error"
-        )
+        title = {404: "Not Found", 403: "Forbidden", 401: "Unauthorized"}.get(exc.status_code, "HTTP Error")
         detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
         return problem_json_ext(
-            status=exc.status_code,
-            title=title,
-            detail=detail,
-            instance=str(request.url),
-            correlation_id=cid,
-            code=("HTTP_ERROR" if exc.status_code == 404 else None),
-        )
-
-
-@app.exception_handler(StarletteHTTPException)
-async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPException):
-    cid = getattr(request.state, "correlation_id", str(uuid4()))
-    title = {404: "Not Found", 403: "Forbidden", 401: "Unauthorized"}.get(
-        exc.status_code, "HTTP Error"
-    )
-    detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
-    return problem_json_ext(
         status=exc.status_code,
         title=title,
         detail=detail,
         instance=str(request.url),
         correlation_id=cid,
         code=("HTTP_ERROR" if exc.status_code == 404 else None),
-    )
+        )
+
+
+
+@app.exception_handler(StarletteHTTPException)
+async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    cid = getattr(request.state, "correlation_id", str(uuid4()))
+    title = {404: "Not Found", 403: "Forbidden", 401: "Unauthorized"}.get(exc.status_code, "HTTP Error")
+    detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    return problem_json_ext(
+    status=exc.status_code,
+    title=title,
+    detail=detail,
+    instance=str(request.url),
+    correlation_id=cid,
+    code=("HTTP_ERROR" if exc.status_code == 404 else None),
+)
 
 
 @app.exception_handler(RequestValidationError)
@@ -205,9 +191,7 @@ def _ensure_tags(db: Session, names: Optional[list[str]]):
 
 
 @app.post("/api/v1/notes", response_model=NoteOut)
-def create_note(
-    body: NoteCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+def create_note(body: NoteCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     note = Note(title=body.title, body=body.body, owner_id=user.id)
     db.add(note)
     db.flush()
@@ -216,11 +200,8 @@ def create_note(
     db.commit()
     db.refresh(note)
     return NoteOut(
-        id=note.id,
-        title=note.title,
-        body=note.body,
-        owner_id=note.owner_id,
-        tags=[nt.tag.name for nt in note.tags],
+        id=note.id, title=note.title, body=note.body, owner_id=note.owner_id,
+        tags=[nt.tag.name for nt in note.tags]
     )
 
 
@@ -230,11 +211,8 @@ def get_note(note_id: int, user: User = Depends(get_current_user), db: Session =
     if not note or (note.owner_id != user.id and user.role != "admin"):
         raise HTTPException(status_code=404, detail="Note not found")
     return NoteOut(
-        id=note.id,
-        title=note.title,
-        body=note.body,
-        owner_id=note.owner_id,
-        tags=[nt.tag.name for nt in note.tags],
+        id=note.id, title=note.title, body=note.body, owner_id=note.owner_id,
+        tags=[nt.tag.name for nt in note.tags]
     )
 
 
@@ -258,23 +236,15 @@ def list_notes(
     for n in items:
         out.append(
             NoteOut(
-                id=n.id,
-                title=n.title,
-                body=n.body,
-                owner_id=n.owner_id,
-                tags=[nt.tag.name for nt in n.tags],
+                id=n.id, title=n.title, body=n.body, owner_id=n.owner_id,
+                tags=[nt.tag.name for nt in n.tags]
             )
         )
     return out
 
 
 @app.patch("/api/v1/notes/{note_id}", response_model=NoteOut)
-def patch_note(
-    note_id: int,
-    body: NotePatch,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def patch_note(note_id: int, body: NotePatch, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     note = db.get(Note, note_id)
     if not note or (note.owner_id != user.id and user.role != "admin"):
         raise HTTPException(status_code=404, detail="Note not found")
@@ -290,18 +260,13 @@ def patch_note(
     db.commit()
     db.refresh(note)
     return NoteOut(
-        id=note.id,
-        title=note.title,
-        body=note.body,
-        owner_id=note.owner_id,
-        tags=[nt.tag.name for nt in note.tags],
+        id=note.id, title=note.title, body=note.body, owner_id=note.owner_id,
+        tags=[nt.tag.name for nt in note.tags]
     )
 
 
 @app.delete("/api/v1/notes/{note_id}", status_code=204)
-def delete_note(
-    note_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
-):
+def delete_note(note_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     note = db.get(Note, note_id)
     if not note or (note.owner_id != user.id and user.role != "admin"):
         raise HTTPException(status_code=404, detail="Note not found")

@@ -2,9 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [ main, "p**" ]
+    branches:
+      - main
+      - "p**"
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   tests-and-image:
@@ -22,13 +25,28 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # установка приложения + email-validator
-          pip install -e . "pydantic[email]" pytest httpx
+          # приложение + тесты + инструменты качества
+          pip install -e . "pydantic[email]" \
+            pytest httpx pytest-cov \
+            ruff black isort bandit
 
-      - name: Run pytest
+      - name: Run ruff (lint)
+        run: ruff check .
+
+      - name: Run black (format check)
+        run: black --check .
+
+      - name: Run isort (import order)
+        run: isort --check-only .
+
+      - name: Run bandit (security linter)
+        run: bandit -r src -q
+
+      - name: Run pytest with coverage
         env:
           PYTHONPATH: src
-        run: pytest -q
+          JWT_SECRET: ci_super_secret_1234567890
+        run: pytest -q --cov=src/studynotes --cov-report=term-missing --cov-fail-under=80
 
       - name: Lint Dockerfile with hadolint
         uses: hadolint/hadolint-action@v3.1.0
