@@ -18,3 +18,13 @@ ignore = [
   "S101",
   "PLR2004",
 ]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = ["studynotes"]
+src_paths = ["src"]

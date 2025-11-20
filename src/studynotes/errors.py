@@ -52,9 +52,7 @@ def make_exception_handlers():
         )
 
     async def unhandled_exc_handler(request: Request, exc: Exception):
-        return problem(
-            500, "Internal error", "Something went wrong", code="INTERNAL_ERROR"
-        )
+        return problem(500, "Internal error", "Something went wrong", code="INTERNAL_ERROR")
 
     return {
         StarletteHTTPException: http_exc_handler,
