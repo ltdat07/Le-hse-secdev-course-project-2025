@@ -1,4 +1,5 @@
-from typing import Any
+import logging
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -22,12 +23,16 @@ from .schemas import (
     UserOut,
 )
 from .security import (
+    ProblemDetailsException,
     create_access_token,
     get_current_user,
     hash_password,
     require_admin,
     verify_password,
 )
+
+logger = logging.getLogger("studynotes")
+
 
 app = FastAPI(title="Study Notes API", version="1.0")
 
@@ -57,7 +62,7 @@ def problem_json_ext(
     type_: str = "about:blank",
     code: str | None = None,
     message: str | None = None,
-    details: dict[str, Any] | None = None,
+    details: Dict[str, Any] | None = None,
 ) -> JSONResponse:
     body = {
         "type": type_,
@@ -70,75 +75,108 @@ def problem_json_ext(
         "message": message or (detail or title),
         "details": details or {},
     }
-    return JSONResponse(
-        status_code=status,
-        content=body,
-        media_type="application/problem+json",
-    )
+    return JSONResponse(status_code=status, content=body, media_type="application/problem+json")
 
 
 @app.middleware("http")
 async def attach_correlation_id(request: Request, call_next):
-    request.state.correlation_id = str(uuid4())
+    cid = getattr(request.state, "correlation_id", None) or str(uuid4())
+    request.state.correlation_id = cid
+
     try:
         response = await call_next(request)
-        return response
     except StarletteHTTPException as exc:
-        cid = getattr(request.state, "correlation_id", str(uuid4()))
-        title_map = {
-            404: "Not Found",
-            403: "Forbidden",
-            401: "Unauthorized",
-        }
-        title = title_map.get(exc.status_code, "HTTP Error")
+        title = {404: "Not Found", 403: "Forbidden", 401: "Unauthorized"}.get(
+            exc.status_code, "HTTP Error"
+        )
         detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
-        return problem_json_ext(
+
+        code: str | None = None
+        if exc.status_code == 404:
+            if request.url.path.startswith("/api/v1/notes/"):
+                code = "NOT_FOUND"
+            else:
+                code = "HTTP_ERROR"
+
+        response = problem_json_ext(
             status=exc.status_code,
             title=title,
             detail=detail,
             instance=str(request.url),
             correlation_id=cid,
-            code=("HTTP_ERROR" if exc.status_code == 404 else None),
+            code=code,
         )
+
+    logger.info(
+        "request",
+        extra={
+            "correlation_id": cid,
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+        },
+    )
+
+    return response
 
 
 @app.exception_handler(StarletteHTTPException)
-async def starlette_http_exception_handler(
-    request: Request,
-    exc: StarletteHTTPException,
-):
+async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPException):
     cid = getattr(request.state, "correlation_id", str(uuid4()))
-    title_map = {
-        404: "Not Found",
-        403: "Forbidden",
-        401: "Unauthorized",
-    }
-    title = title_map.get(exc.status_code, "HTTP Error")
+    title = {404: "Not Found", 403: "Forbidden", 401: "Unauthorized"}.get(
+        exc.status_code, "HTTP Error"
+    )
     detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+
+    code: str | None = None
+    if exc.status_code == 404:
+        if request.url.path.startswith("/api/v1/notes/"):
+            code = "NOT_FOUND"
+        else:
+            code = "HTTP_ERROR"
+
     return problem_json_ext(
         status=exc.status_code,
         title=title,
         detail=detail,
         instance=str(request.url),
         correlation_id=cid,
-        code=("HTTP_ERROR" if exc.status_code == 404 else None),
+        code=code,
     )
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(
-    request: Request,
-    exc: RequestValidationError,
-):
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
     cid = getattr(request.state, "correlation_id", str(uuid4()))
     return problem_json_ext(
         status=422,
-        title="Unprocessable Entity",
-        detail=exc.errors()[0]["msg"] if exc.errors() else "Validation failed",
+        title="Validation Error",
+        detail="Invalid request body/parameters",
+        type_="https://example.com/probs/validation-error",
         instance=str(request.url),
         correlation_id=cid,
-        type_="https://datatracker.ietf.org/doc/html/rfc4918#section-11.2",
         code="VALIDATION_ERROR",
+        message="Validation failed",
+        details={"errors": exc.errors()},
+    )
+
+
+@app.exception_handler(ProblemDetailsException)
+async def problem_details_exception_handler(
+    request: Request,
+    exc: ProblemDetailsException,
+) -> JSONResponse:
+    cid = getattr(request.state, "correlation_id", str(uuid4()))
+    return problem_json_ext(
+        status=exc.status_code,
+        title=exc.title or "Error",
+        detail=exc.message,
+        type_=exc.type_ or "about:blank",
+        instance=str(request.url),
+        correlation_id=cid,
+        code=exc.code,
+        message=exc.message,
+        details=exc.details or {},
     )
 
 
@@ -183,11 +221,7 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
 
 
 @app.post("/api/v1/tags", response_model=TagOut)
-def create_tag(
-    body: TagCreate,
-    _: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def create_tag(body: TagCreate, _: User = Depends(get_current_user), db: Session = Depends(get_db)):
     name = body.name.strip()
     tag = db.query(Tag).filter(Tag.name == name).first()
     if tag:
@@ -199,7 +233,7 @@ def create_tag(
     return tag
 
 
-@app.get("/api/v1/tags", response_model=list[TagOut])
+@app.get("/api/v1/tags", response_model=List[TagOut])
 def list_tags(
     _: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -209,10 +243,10 @@ def list_tags(
     return db.query(Tag).order_by(Tag.name).limit(limit).offset(offset).all()
 
 
-def _ensure_tags(db: Session, names: list[str] | None):
+def _ensure_tags(db: Session, names: Optional[list[str]]):
     if not names:
         return []
-    tags: list[Tag] = []
+    tags = []
     for raw in names:
         name = raw.strip()
         t = db.query(Tag).filter(Tag.name == name).first()
@@ -226,9 +260,7 @@ def _ensure_tags(db: Session, names: list[str] | None):
 
 @app.post("/api/v1/notes", response_model=NoteOut)
 def create_note(
-    body: NoteCreate,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    body: NoteCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     note = Note(title=body.title, body=body.body, owner_id=user.id)
     db.add(note)
@@ -247,11 +279,7 @@ def create_note(
 
 
 @app.get("/api/v1/notes/{note_id}", response_model=NoteOut)
-def get_note(
-    note_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def get_note(note_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     note = db.get(Note, note_id)
     if not note or (note.owner_id != user.id and user.role != "admin"):
         raise HTTPException(status_code=404, detail="Note not found")
@@ -264,27 +292,23 @@ def get_note(
     )
 
 
-@app.get("/api/v1/notes", response_model=list[NoteOut])
+@app.get("/api/v1/notes", response_model=List[NoteOut])
 def list_notes(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    tag: str | None = None,
-    q: str | None = None,
+    tag: Optional[str] = None,
+    q: Optional[str] = None,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ):
-    query = db.query(Note).filter(
-        (Note.owner_id == user.id) | (user.role == "admin"),
-    )
+    query = db.query(Note).filter((Note.owner_id == user.id) | (user.role == "admin"))
     if tag:
         query = query.join(NoteTag).join(Tag).filter(Tag.name == tag)
     if q:
         like = f"%{q}%"
-        query = query.filter(
-            (Note.title.like(like)) | (Note.body.like(like)),
-        )
+        query = query.filter((Note.title.like(like)) | (Note.body.like(like)))
     items = query.order_by(Note.id.desc()).limit(limit).offset(offset).all()
-    out: list[NoteOut] = []
+    out = []
     for n in items:
         out.append(
             NoteOut(
@@ -293,7 +317,7 @@ def list_notes(
                 body=n.body,
                 owner_id=n.owner_id,
                 tags=[nt.tag.name for nt in n.tags],
-            ),
+            )
         )
     return out
 
@@ -330,9 +354,7 @@ def patch_note(
 
 @app.delete("/api/v1/notes/{note_id}", status_code=204)
 def delete_note(
-    note_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    note_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     note = db.get(Note, note_id)
     if not note or (note.owner_id != user.id and user.role != "admin"):
@@ -343,8 +365,5 @@ def delete_note(
 
 
 @app.get("/api/v1/admin/users", response_model=list[UserOut])
-def adm_list_users(
-    _: User = Depends(require_admin),
-    db: Session = Depends(get_db),
-):
+def adm_list_users(_: User = Depends(require_admin), db: Session = Depends(get_db)):
     return db.query(User).all()
