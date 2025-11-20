@@ -35,6 +35,7 @@ jobs:
         with:
           dockerfile: Dockerfile
           failure-threshold: error
+          config: .hadolint.yaml
 
       - name: Build Docker image for CI
         run: docker build -t studynotes:ci -f Dockerfile .
@@ -44,5 +45,14 @@ jobs:
         with:
           image-ref: studynotes:ci
           format: 'table'
-          exit-code: '0'
+          output: 'trivy-report.txt'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          vuln-type: 'os,library'
           ignore-unfixed: true
+          exit-code: '0'
+
+      - name: Upload Trivy report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: trivy-report.txt
