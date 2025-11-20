@@ -1,7 +1,6 @@
 from jose import jwt
 
-from studynotes.security import (create_access_token, hash_password,
-                                 verify_password)
+from studynotes.security import create_access_token, hash_password, verify_password
 
 
 def test_argon2_hash_and_verify_ok():
