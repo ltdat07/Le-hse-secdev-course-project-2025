@@ -10,10 +10,24 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .database import Base, engine, get_db
 from .models import Note, NoteTag, Tag, User
-from .schemas import (LoginIn, NoteCreate, NoteOut, NotePatch, TagCreate,
-                      TagOut, Token, UserCreate, UserOut)
-from .security import (create_access_token, get_current_user, hash_password,
-                       require_admin, verify_password)
+from .schemas import (
+    LoginIn,
+    NoteCreate,
+    NoteOut,
+    NotePatch,
+    TagCreate,
+    TagOut,
+    Token,
+    UserCreate,
+    UserOut,
+)
+from .security import (
+    create_access_token,
+    get_current_user,
+    hash_password,
+    require_admin,
+    verify_password,
+)
 
 app = FastAPI(title="Study Notes API", version="1.0")
 
