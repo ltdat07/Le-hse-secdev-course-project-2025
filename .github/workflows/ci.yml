@@ -37,7 +37,9 @@ jobs:
             httpx \
             ruff \
             black \
-            isort
+            isort \
+            bandit
+
 
 
       - name: Run ruff (lint)
