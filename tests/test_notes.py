@@ -1,10 +1,12 @@
 from fastapi.testclient import TestClient
+
 from studynotes.main import app
 
 client = TestClient(app)
 
 EMAIL = "u1@example.com"
 PASS = "password123"
+
 
 def register_and_login(email=EMAIL, password=PASS):
     r = client.post("/api/v1/auth/register", json={"email": email, "password": password})
@@ -13,6 +15,7 @@ def register_and_login(email=EMAIL, password=PASS):
     assert r.status_code == 200
     token = r.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
+
 
 def test_crud_flow():
     headers = register_and_login()
@@ -37,7 +40,12 @@ def test_crud_flow():
     assert len(r.json()) >= 1
 
     # patch
-    r = client.patch(f"/api/v1/notes/{note['id']}", headers=headers, json={"title": "Dijkstra algo"})
+    r = client.patch(
+        f"/api/v1/notes/{note['id']}",
+        headers=headers,
+        json={"title": "Dijkstra algo"},
+    )
+
     assert r.status_code == 200
 
     # delete
