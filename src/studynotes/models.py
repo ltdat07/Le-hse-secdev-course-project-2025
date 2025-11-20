@@ -7,11 +7,14 @@ from .database import Base
 class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    email: Mapped[str] = mapped_column(
+        String(255), unique=True, index=True, nullable=False
+    )
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(32), default="user")
 
     notes = relationship("Note", back_populates="owner", cascade="all, delete-orphan")
+
 
 class Note(Base):
     __tablename__ = "notes"
@@ -23,12 +26,14 @@ class Note(Base):
     owner = relationship("User", back_populates="notes")
     tags = relationship("NoteTag", back_populates="note", cascade="all, delete-orphan")
 
+
 class Tag(Base):
     __tablename__ = "tags"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
 
     notes = relationship("NoteTag", back_populates="tag", cascade="all, delete-orphan")
+
 
 class NoteTag(Base):
     __tablename__ = "note_tags"

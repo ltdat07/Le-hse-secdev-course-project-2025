@@ -206,13 +206,7 @@ def list_tags(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ):
-    return (
-        db.query(Tag)
-        .order_by(Tag.name)
-        .limit(limit)
-        .offset(offset)
-        .all()
-    )
+    return db.query(Tag).order_by(Tag.name).limit(limit).offset(offset).all()
 
 
 def _ensure_tags(db: Session, names: list[str] | None):
@@ -289,12 +283,7 @@ def list_notes(
         query = query.filter(
             (Note.title.like(like)) | (Note.body.like(like)),
         )
-    items = (
-        query.order_by(Note.id.desc())
-        .limit(limit)
-        .offset(offset)
-        .all()
-    )
+    items = query.order_by(Note.id.desc()).limit(limit).offset(offset).all()
     out: list[NoteOut] = []
     for n in items:
         out.append(
