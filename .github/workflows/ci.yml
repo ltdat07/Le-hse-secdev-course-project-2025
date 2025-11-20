@@ -34,11 +34,13 @@ jobs:
             "python-jose[cryptography]>=3.3.0" \
             "pydantic[email]>=2.7.0" \
             pytest \
+            pytest-cov \
             httpx \
             ruff \
             black \
             isort \
             bandit
+
 
 
 
