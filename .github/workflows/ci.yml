@@ -25,10 +25,16 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # приложение + тесты + инструменты качества
-          pip install -e . "pydantic[email]" \
-            pytest httpx pytest-cov \
-            ruff black isort bandit
+          pip install \
+            "fastapi>=0.110.0" \
+            "uvicorn[standard]>=0.29.0" \
+            "sqlalchemy>=2.0.0" \
+            "passlib[argon2]>=1.7.4" \
+            "python-jose[cryptography]>=3.3.0" \
+            "pydantic[email]>=2.7.0" \
+            pytest \
+            httpx
+
 
       - name: Run ruff (lint)
         run: ruff check .
