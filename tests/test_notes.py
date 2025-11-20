@@ -5,7 +5,7 @@ from studynotes.main import app
 client = TestClient(app)
 
 EMAIL = "u1@example.com"
-PASS = "password123"
+PASS = "password123"  # noqa: S105
 
 
 def register_and_login(email=EMAIL, password=PASS):
