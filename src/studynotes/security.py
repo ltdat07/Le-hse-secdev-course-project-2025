@@ -1,10 +1,10 @@
 import os
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import jwt, JWTError
+from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
@@ -36,14 +36,15 @@ def verify_password(password: str, hashed: str) -> bool:
 def create_access_token(
     sub: str,
     ttl_seconds: int = 60 * 60,
-    extra_claims: Optional[Dict[str, Any]] = None,
-    kid: Optional[str] = None,
+    extra_claims: dict[str, Any] | None = None,
+    kid: str | None = None,
 ) -> str:
-    """
-    Делает JWT с настраиваемым TTL, доп. полями и заголовком kid (под тесты).
-    """
-    now = datetime.now(tz=timezone.utc)
-    claims: Dict[str, Any] = {"sub": sub, "iat": now, "exp": now + timedelta(seconds=ttl_seconds)}
+    now = datetime.now(tz=UTC)
+    claims: dict[str, Any] = {
+        "sub": sub,
+        "iat": now,
+        "exp": now + timedelta(seconds=ttl_seconds),
+    }
     if extra_claims:
         claims.update(extra_claims)
 
@@ -55,19 +56,26 @@ def create_access_token(
     return jwt.encode(claims, secret, algorithm=ALGO, headers=headers)
 
 
-def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)) -> User:
+def get_current_user(
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme),
+) -> User:
     cred_exc = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail={"code": "UNAUTHORIZED", "message": "Invalid or missing token", "details": {}},
+        detail={
+            "code": "UNAUTHORIZED",
+            "message": "Invalid or missing token",
+            "details": {},
+        },
     )
     try:
         secret = os.getenv("JWT_SECRET", SECRET)
         payload = jwt.decode(token, secret, algorithms=[ALGO])
-        email: str = payload.get("sub")
+        email: str | None = payload.get("sub")
         if not email:
             raise cred_exc
     except JWTError:
-        raise cred_exc
+        raise cred_exc from None
     user = db.query(User).filter(User.email == email).first()
     if not user:
         raise cred_exc

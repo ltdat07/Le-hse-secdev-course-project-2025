@@ -1,6 +1,6 @@
-from pydantic import BaseModel, EmailStr, Field
-from typing import List, Optional
-from pydantic import ConfigDict
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
 
 class APIError(BaseModel):
     code: str
@@ -38,12 +38,12 @@ class NoteBase(BaseModel):
     body: str
 
 class NoteCreate(NoteBase):
-    tags: List[str] | None = None
+    tags: list[str] | None = None
 
 class NotePatch(BaseModel):
-    title: Optional[str] = None
-    body: Optional[str] = None
-    tags: Optional[List[str]] = None
+    title: str | None = None
+    body: str | None = None
+    tags: list[str] | None = None
 
 class NoteOut(NoteBase):
     id: int

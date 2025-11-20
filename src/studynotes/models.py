@@ -1,6 +1,8 @@
-from sqlalchemy import Integer, String, Text, ForeignKey, UniqueConstraint
-from sqlalchemy.orm import relationship, Mapped, mapped_column
+from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from .database import Base
+
 
 class User(Base):
     __tablename__ = "users"
