@@ -11,18 +11,16 @@ def test_argon2_hash_and_verify_ok():
 
 
 def test_argon2_params_match_nfr_via_hash():
-    # Пример формата: $argon2id$v=19$m=262144,t=3,p=1$<salt>$<hash>
     h = hash_password("check-params")
     parts = h.split("$")
-    # parts[3] должен быть 'm=...,t=...,p=...'
     params = parts[3]
     kv = dict(p.split("=") for p in params.split(","))
     m = int(kv["m"])
     t = int(kv["t"])
     p = int(kv["p"])
-    assert m >= 256 * 1024  # 256 MB в КиБ
-    assert t >= 3  # time_cost
-    assert p == 1  # parallelism
+    assert m >= 256 * 1024
+    assert t >= 3
+    assert p == 1
 
 
 def test_jwt_created_and_decodable(monkeypatch):
