@@ -12,6 +12,8 @@ services:
       - app-data:/app
     security_opt:
       - no-new-privileges:true
+      - seccomp=./seccomp-profile.json
+      - apparmor=docker-default
     cap_drop:
       - ALL
     read_only: true
