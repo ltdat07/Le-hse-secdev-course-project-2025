@@ -22,13 +22,27 @@ jobs:
         with:
           python-version: "3.12"
 
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # приложение + тесты + инструменты качества
-          pip install -e . "pydantic[email]" \
-            pytest httpx pytest-cov \
-            ruff black isort bandit
+          pip install \
+            "fastapi>=0.110.0" \
+            "uvicorn[standard]>=0.29.0" \
+            "sqlalchemy>=2.0.0" \
+            "passlib[argon2]>=1.7.4" \
+            "python-jose[cryptography]>=3.3.0" \
+            "pydantic[email]>=2.7.0" \
+            pytest \
+            pytest-cov \
+            httpx \
+            ruff \
+            black \
+            isort \
+            bandit
+
+
+
 
       - name: Run ruff (lint)
         run: ruff check .
@@ -53,6 +67,7 @@ jobs:
         with:
           dockerfile: Dockerfile
           failure-threshold: error
+          config: .hadolint.yaml
 
       - name: Build Docker image for CI
         run: docker build -t studynotes:ci -f Dockerfile .
@@ -61,6 +76,15 @@ jobs:
         uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: studynotes:ci
-          format: table
-          exit-code: '0'
+          format: 'table'
+          output: 'trivy-report.txt'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          vuln-type: 'os,library'
           ignore-unfixed: true
+          exit-code: '0'
+
+      - name: Upload Trivy report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: trivy-report.txt
