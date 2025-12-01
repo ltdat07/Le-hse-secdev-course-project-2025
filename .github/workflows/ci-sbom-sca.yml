@@ -1,0 +1,57 @@
+name: Security - SBOM & SCA
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "**/*.py"
+      - "requirements*.txt"
+      - ".github/workflows/ci-sbom-sca.yml"
+      - "policy/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sbom_sca:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare evidence directory
+        run: mkdir -p EVIDENCE/P09
+
+      - name: Generate SBOM (Syft, CycloneDX JSON)
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work \
+            anchore/syft:latest \
+            packages dir:. -o cyclonedx-json > EVIDENCE/P09/sbom.json
+
+      - name: Run SCA scan (Grype)
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work \
+            anchore/grype:latest \
+            sbom:/work/EVIDENCE/P09/sbom.json -o json > EVIDENCE/P09/sca_report.json
+
+      - name: Generate SCA severity summary
+        run: |
+          echo "# SCA summary" > EVIDENCE/P09/sca_summary.md
+          # группируем severity через jq; если что-то пойдёт не так — не роняем job
+          jq '[.matches[].vulnerability.severity]
+              | group_by(.)
+              | map({(.[0]): length})
+              | add' EVIDENCE/P09/sca_report.json >> EVIDENCE/P09/sca_summary.md || true
+
+      - name: Upload SBOM & SCA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: P09_EVIDENCE
+          path: EVIDENCE/P09
