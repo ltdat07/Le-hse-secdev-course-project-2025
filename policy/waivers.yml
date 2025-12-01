@@ -1,10 +1,13 @@
-waivers: []
-# waivers:
-#   - id: "CVE-2024-XXXX"
-#     package: "example-lib"
-#     version: "1.2.3"
-#     severity: "High"
-#     reason: "Транзитивная зависимость, код не в прод-пути."
-#     issue: "https://github.com/<org>/<repo>/issues/123"
-#     expires_at: "2025-12-31"
-#     approved_by: "tutor@example.org"
+waivers:
+  - id: "CVE-0000-EXAMPLE"
+    package: "example-lib"
+    version: "0.0.0"
+    severity: "High"
+    reason: >
+      Пример waiver для демонстрации процесса оформления исключений.
+      На текущий момент в SCA-отчёте нет уязвимости с таким ID,
+      поэтому данный waiver не применяется ни к одной зависимости.
+    issue: "https://github.com/ltdat07/Le-hse-secdev-course-project-2025/issues/4"
+    expires_at: "2025-12-31"
+    approved_by: "student@example.com"
+    active: false
