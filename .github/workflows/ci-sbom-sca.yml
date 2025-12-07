@@ -20,6 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    env:
+      SYFT_VERSION: "1.38.0"
+      GRYPE_VERSION: "0.104.1"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,13 +33,15 @@ jobs:
 
       - name: Generate SBOM (Syft CycloneDX)
         run: |
-          docker run --rm -v "$PWD:/work" -w /work anchore/syft:v1.16.0 \
+          docker run --rm -v "$PWD:/work" -w /work \
+            anchore/syft:v${SYFT_VERSION} \
             packages dir:. -o cyclonedx-json > EVIDENCE/P09/sbom.json
 
       - name: SCA Scan (Grype)
         run: |
           set -e
-          docker run --rm -v "$PWD:/work" -w /work anchore/grype:v0.84.0 \
+          docker run --rm -v "$PWD:/work" -w /work \
+            anchore/grype:v${GRYPE_VERSION} \
             sbom:/work/EVIDENCE/P09/sbom.json -o json > EVIDENCE/P09/sca_report.json
 
           {
