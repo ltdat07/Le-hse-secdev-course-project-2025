@@ -1,0 +1,13 @@
+title = "Course project gitleaks config"
+
+[extend]
+
+[allowlist]
+description = "Ignore non-sensitive artefacts and known test patterns"
+paths = [
+  "EVIDENCE/",
+]
+commits = []
+regexes = [
+  '''TEST_SECRET_DO_NOT_USE''',
+]
