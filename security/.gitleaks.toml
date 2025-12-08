@@ -3,9 +3,10 @@ title = "Course project gitleaks config"
 [extend]
 
 [allowlist]
-description = "Ignore non-sensitive artefacts and known test patterns"
+description = "Ignore non-sensitive artefacts (reports) and known test patterns"
 paths = [
-  "EVIDENCE/",
+  "EVIDENCE/P09/",
+  "EVIDENCE/P10/",
 ]
 commits = []
 regexes = [
