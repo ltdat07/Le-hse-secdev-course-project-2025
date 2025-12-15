@@ -78,9 +78,9 @@ jobs:
             -v "${GITHUB_WORKSPACE}:/work" \
             "${TRIVY_IMAGE}" \
               image --input /work/EVIDENCE/P12/image.tar \
+              --config /work/security/trivy.yaml \
               --format json \
               --output /work/EVIDENCE/P12/trivy_report.json \
-              --severity HIGH,CRITICAL \
               --exit-code 0 || true
 
       - name: Hardening summary (with metrics)
