@@ -1,14 +1,18 @@
 title = "Course project gitleaks config"
 
 [extend]
+useDefault = true
 
 [allowlist]
-description = "Ignore non-sensitive artefacts (reports) and known test patterns"
+description = "Ignore generated artifacts and known test markers"
+
 paths = [
-  "EVIDENCE/P09/",
-  "EVIDENCE/P10/",
+  '''^EVIDENCE/''',
+  '''^\.venv/''',
+  '''^\.pytest_cache/''',
+  '''^\.mypy_cache/''',
 ]
-commits = []
+
 regexes = [
   '''TEST_SECRET_DO_NOT_USE''',
 ]
