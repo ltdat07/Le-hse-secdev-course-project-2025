@@ -1,0 +1,153 @@
+name: P12 - IaC & Container Security (Hadolint/Checkov/Trivy)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "Dockerfile"
+      - "compose*.yml"
+      - "compose*.yaml"
+      - "iac/**"
+      - "security/**"
+      - ".github/workflows/ci-p12-iac-container.yml"
+  push:
+    branches: [main, p12-iac-container]
+    paths:
+      - "Dockerfile"
+      - "compose*.yml"
+      - "compose*.yaml"
+      - "iac/**"
+      - "security/**"
+      - ".github/workflows/ci-p12-iac-container.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p12-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  p12:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      IMAGE_NAME: studynotes
+      IMAGE_TAG: p12-${{ github.sha }}
+      HADOLINT_IMAGE: hadolint/hadolint:v2.12.0
+      CHECKOV_IMAGE: bridgecrew/checkov:3.2.387
+      TRIVY_IMAGE: aquasec/trivy:0.58.1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure evidence dir
+        run: mkdir -p EVIDENCE/P12
+
+      - name: Build image
+        run: |
+          docker build -t "${IMAGE_NAME}:${IMAGE_TAG}" .
+
+      - name: Save image to tar (evidence)
+        run: |
+          docker save "${IMAGE_NAME}:${IMAGE_TAG}" -o EVIDENCE/P12/image.tar
+
+      - name: Hadolint (Dockerfile -> JSON)
+        run: |
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/work" \
+            "${HADOLINT_IMAGE}" \
+              hadolint -f json -c /work/security/hadolint.yaml /work/Dockerfile \
+              > EVIDENCE/P12/hadolint_report.json || true
+
+      - name: Checkov (IaC -> JSON)
+        run: |
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/work" \
+            "${CHECKOV_IMAGE}" \
+              -d /work/iac \
+              -o json \
+              --config-file /work/security/checkov.yaml \
+              --output-file-path /work/EVIDENCE/P12/checkov_report.json || true
+
+      - name: Trivy (image.tar -> JSON)
+        run: |
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/work" \
+            "${TRIVY_IMAGE}" \
+              image --input /work/EVIDENCE/P12/image.tar \
+              --format json \
+              --output /work/EVIDENCE/P12/trivy_report.json \
+              --severity HIGH,CRITICAL \
+              --exit-code 0 || true
+
+      - name: Hardening summary (with metrics)
+        if: always()
+        run: |
+          python - <<'PY'
+          import os
+          import json
+          from pathlib import Path
+          base = Path("EVIDENCE/P12")
+
+          # Hadolint
+          had = []
+          hp = base/"hadolint_report.json"
+          if hp.exists():
+            try:
+              had = json.loads(hp.read_text(encoding="utf-8"))
+            except Exception:
+              had = None
+
+          # Checkov
+          cp = base/"checkov_report.json"
+          checkov = {}
+          if cp.exists():
+            try:
+              checkov = json.loads(cp.read_text(encoding="utf-8"))
+            except Exception:
+              checkov = {}
+
+          # Trivy
+          tp = base/"trivy_report.json"
+          trivy = {}
+          if tp.exists():
+            try:
+              trivy = json.loads(tp.read_text(encoding="utf-8"))
+            except Exception:
+              trivy = {}
+
+          sev = {"CRITICAL":0, "HIGH":0, "MEDIUM":0, "LOW":0, "UNKNOWN":0}
+          for r in trivy.get("Results", []) or []:
+            for v in (r.get("Vulnerabilities") or []):
+              s = (v.get("Severity") or "UNKNOWN").upper()
+              sev[s] = sev.get(s, 0) + 1
+
+          summary = (checkov.get("summary") or {})
+          lines = []
+          lines.append("# P12 - Hardening summary")
+          lines.append("")
+          lines.append(f"- Image: {os.environ.get('IMAGE_NAME')}:{os.environ.get('IMAGE_TAG')}")
+          lines.append("")
+          lines.append("## Tool results")
+          lines.append(f"- Hadolint: {len(had) if isinstance(had, list) else 'n/a'} findings (security/hadolint.yaml)")
+          lines.append(f"- Checkov: passed={summary.get('passed','?')} failed={summary.get('failed','?')} skipped={summary.get('skipped','?')} (iac/, security/checkov.yaml)")
+          lines.append(f"- Trivy vulns: CRITICAL={sev['CRITICAL']} HIGH={sev['HIGH']} MEDIUM={sev['MEDIUM']} LOW={sev['LOW']} (image.tar)")
+          lines.append("")
+          lines.append("## Hardening applied")
+          lines.append("- Dockerfile: non-root user, multi-stage build, no `latest`, minimal packages")
+          lines.append("- K8s: runAsNonRoot + RuntimeDefault seccomp, drop ALL caps, no privilege escalation, readonly rootfs, NetworkPolicy")
+          lines.append("- Note: K8s has `readOnlyRootFilesystem: true` enabled to reduce write surface.")
+          lines.append("- Note: App uses SQLite, so it requires a writable volume (e.g., EmptyDir/PVC) + DATABASE_URL pointing to that mount (implemented in iac/k8s.yaml or planned if runtime is out of scope).")
+          lines.append("")
+          base.joinpath("hardening_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload P12 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: P12_EVIDENCE
+          path: EVIDENCE/P12

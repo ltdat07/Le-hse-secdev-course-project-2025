@@ -1,0 +1,8 @@
+quiet: false
+compact: true
+
+framework:
+  - kubernetes
+
+skip-check:
+  - CKV_K8S_43
