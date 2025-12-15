@@ -62,15 +62,6 @@ jobs:
           timeout 60 bash -c 'until curl -sf "http://localhost:'"${PORT}"'/healthz" >/dev/null; do sleep 1; done'
           echo "App is ready."
 
-      - name: Show cache headers (debug)
-        run: |
-          echo "== / =="
-          curl -s -D - -o /dev/null http://localhost:8000/ | grep -i -E "cache-control|pragma|expires" || true
-          echo "== /robots.txt =="
-          curl -s -D - -o /dev/null http://localhost:8000/robots.txt | grep -i -E "cache-control|pragma|expires" || true
-          echo "== /sitemap.xml =="
-          curl -s -D - -o /dev/null http://localhost:8000/sitemap.xml | grep -i -E "cache-control|pragma|expires" || true
-
 
       - name: ZAP Baseline (do not fail build)
         run: |
