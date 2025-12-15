@@ -117,7 +117,7 @@ async def attach_correlation_id(request: Request, call_next):
         },
     )
 
-    response.headers.setdefault("Cache-Control", "no-store")
+    response.headers["Cache-Control"] = "no-store"
     return response
 
 
