@@ -117,7 +117,9 @@ async def attach_correlation_id(request: Request, call_next):
         },
     )
 
-    response.headers["Cache-Control"] = "no-store"
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
     return response
 
 
