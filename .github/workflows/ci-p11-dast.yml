@@ -8,7 +8,7 @@ on:
       - "requirements*.txt"
       - ".github/workflows/ci-p11-dast.yml"
   push:
-    branches: [main]
+    branches: [main, p11-dast-zap]
     paths:
       - "src/**"
       - "requirements*.txt"
@@ -109,3 +109,4 @@ jobs:
         with:
           name: P11_EVIDENCE
           path: EVIDENCE/P11
+          if-no-files-found: warn
