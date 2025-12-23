@@ -1,0 +1,23 @@
+rules:
+  - id: py-no-eval
+    languages: [python]
+    message: "Избегай использования eval() — риск RCE. Рассмотри ast.literal_eval или явный парсинг."
+    severity: ERROR
+    patterns:
+      - pattern: eval(...)
+    metadata:
+      category: security
+      cwe: "CWE-94: Improper Control of Generation of Code ('Code Injection')"
+
+  - id: py-no-uvicorn-debug
+    languages: [python]
+    message: "Запуск uvicorn с debug/reload в проде небезопасен."
+    severity: WARNING
+    patterns:
+      - pattern: |
+          uvicorn.run(..., debug=True, ...)
+      - pattern: |
+          uvicorn.run(..., reload=True, ...)
+    metadata:
+      category: security
+      cwe: "CWE-489: Active Debug Code"

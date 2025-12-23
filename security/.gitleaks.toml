@@ -1,0 +1,18 @@
+title = "Course project gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Ignore generated artifacts and known test markers"
+
+paths = [
+  '''^EVIDENCE/''',
+  '''^\.venv/''',
+  '''^\.pytest_cache/''',
+  '''^\.mypy_cache/''',
+]
+
+regexes = [
+  '''TEST_SECRET_DO_NOT_USE''',
+]
