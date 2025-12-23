@@ -9,9 +9,16 @@ build/
 .env
 .pytest_cache/
 .coverage
+
 # IDE
 .vscode/
 .idea/
+
 # OS
 .DS_Store
-EVIDENCE/
+
+# Ignore generated evidence artifacts
+EVIDENCE/*
+!EVIDENCE/P12/
+EVIDENCE/P12/*
+!EVIDENCE/P12/.gitkeep

@@ -90,11 +90,13 @@ jobs:
           import os
           import json
           from pathlib import Path
+
           base = Path("EVIDENCE/P12")
+          base.mkdir(parents=True, exist_ok=True)
 
           # Hadolint
           had = []
-          hp = base/"hadolint_report.json"
+          hp = base / "hadolint_report.json"
           if hp.exists():
             try:
               had = json.loads(hp.read_text(encoding="utf-8"))
@@ -102,7 +104,7 @@ jobs:
               had = None
 
           # Checkov
-          cp = base/"checkov_report.json"
+          cp = base / "checkov_report.json"
           checkov = {}
           if cp.exists():
             try:
@@ -111,7 +113,7 @@ jobs:
               checkov = {}
 
           # Trivy
-          tp = base/"trivy_report.json"
+          tp = base / "trivy_report.json"
           trivy = {}
           if tp.exists():
             try:
@@ -119,13 +121,14 @@ jobs:
             except Exception:
               trivy = {}
 
-          sev = {"CRITICAL":0, "HIGH":0, "MEDIUM":0, "LOW":0, "UNKNOWN":0}
+          sev = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
           for r in trivy.get("Results", []) or []:
             for v in (r.get("Vulnerabilities") or []):
               s = (v.get("Severity") or "UNKNOWN").upper()
               sev[s] = sev.get(s, 0) + 1
 
           summary = (checkov.get("summary") or {})
+
           lines = []
           lines.append("# P12 - Hardening summary")
           lines.append("")
@@ -139,15 +142,22 @@ jobs:
           lines.append("## Hardening applied")
           lines.append("- Dockerfile: non-root user, multi-stage build, no `latest`, minimal packages")
           lines.append("- K8s: runAsNonRoot + RuntimeDefault seccomp, drop ALL caps, no privilege escalation, readonly rootfs, NetworkPolicy")
-          lines.append("- Note: K8s has `readOnlyRootFilesystem: true` enabled to reduce write surface.")
-          lines.append("- Note: App uses SQLite, so it requires a writable volume (e.g., EmptyDir/PVC) + DATABASE_URL pointing to that mount (implemented in iac/k8s.yaml or planned if runtime is out of scope).")
+          lines.append("- Enabled readOnlyRootFilesystem: true in container securityContext.")
+          lines.append("- SQLite needs a writable path, so we mount a writable volume at /data and set DATABASE_URL=sqlite:////data/app.db (see iac/k8s.yaml).")
           lines.append("")
-          base.joinpath("hardening_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+          (base / "hardening_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
           PY
+
+      - name: Cleanup image tar (do not upload)
+        if: always()
+        run: rm -f EVIDENCE/P12/image.tar
 
       - name: Upload P12 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: P12_EVIDENCE
-          path: EVIDENCE/P12
+          path: |
+            EVIDENCE/P12/*.json
+            EVIDENCE/P12/*.md
