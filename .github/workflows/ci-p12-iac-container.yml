@@ -154,10 +154,6 @@ jobs:
         if: always()
         run: rm -f EVIDENCE/P12/image.tar
 
-      - name: Cleanup wrong Checkov output dir (if exists)
-        if: always()
-        run: rm -rf EVIDENCE/P12/checkov_report.json
-
       - name: Upload P12 evidence
         if: always()
         uses: actions/upload-artifact@v4
