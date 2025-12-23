@@ -70,7 +70,8 @@ jobs:
               -d /work/iac \
               -o json \
               --config-file /work/security/checkov.yaml \
-              --output-file-path /work/EVIDENCE/P12/checkov_report.json || true
+              --quiet \
+            > EVIDENCE/P12/checkov_report.json || true
 
       - name: Trivy (image.tar -> JSON)
         run: |
@@ -152,6 +153,10 @@ jobs:
       - name: Cleanup image tar (do not upload)
         if: always()
         run: rm -f EVIDENCE/P12/image.tar
+
+      - name: Cleanup wrong Checkov output dir (if exists)
+        if: always()
+        run: rm -rf EVIDENCE/P12/checkov_report.json
 
       - name: Upload P12 evidence
         if: always()
