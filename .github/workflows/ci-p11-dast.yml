@@ -1,0 +1,113 @@
+name: P11 - DAST (ZAP baseline)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/**"
+      - "requirements*.txt"
+      - ".github/workflows/ci-p11-dast.yml"
+  push:
+    branches: [main, p11-dast-zap]
+    paths:
+      - "src/**"
+      - "requirements*.txt"
+      - ".github/workflows/ci-p11-dast.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p11-dast-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      PORT: "8000"
+      TARGET: "http://localhost:8000/"
+      PYTHONPATH: "src"
+      ZAP_IMAGE: "zaproxy/zap-stable:2.16.0"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure evidence dir
+        run: mkdir -p EVIDENCE/P11
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # если вдруг uvicorn не в requirements.txt — подстрахуемся
+          pip show uvicorn >/dev/null 2>&1 || pip install "uvicorn[standard]"
+
+      - name: Run app
+        run: |
+          uvicorn studynotes.main:app --host 0.0.0.0 --port "${PORT}" &
+          echo "Waiting for health check..."
+          timeout 60 bash -c 'until curl -sf "http://localhost:'"${PORT}"'/healthz" >/dev/null; do sleep 1; done'
+          echo "App is ready."
+
+
+      - name: ZAP Baseline (do not fail build)
+        run: |
+          docker pull "${ZAP_IMAGE}"
+          docker run --rm --network host -v "${GITHUB_WORKSPACE}:/zap/wrk" "${ZAP_IMAGE}" \
+            zap-baseline.py \
+              -t "${TARGET}" \
+              -r zap_baseline.html \
+              -J zap_baseline.json \
+              -d || true
+
+      - name: Move reports to EVIDENCE/P11
+        if: always()
+        run: |
+          mv -f zap_baseline.html EVIDENCE/P11/zap_baseline.html || true
+          mv -f zap_baseline.json EVIDENCE/P11/zap_baseline.json || true
+          ls -la EVIDENCE/P11 || true
+
+      - name: Count alerts (High/Medium/Low/Info)
+        if: always()
+        run: |
+          if [ -f EVIDENCE/P11/zap_baseline.json ]; then
+            counts=$(jq -r '
+              ([.site[]?.alerts[]? | (.riskcode|tonumber)] // []) as $r
+              | {
+                  high:   ($r|map(select(.==3))|length),
+                  medium: ($r|map(select(.==2))|length),
+                  low:    ($r|map(select(.==1))|length),
+                  info:   ($r|map(select(.==0))|length)
+                }' EVIDENCE/P11/zap_baseline.json 2>/dev/null \
+              || echo '{"high":0,"medium":0,"low":0,"info":0}')
+            echo "$counts" > EVIDENCE/P11/zap_counts.json
+
+            echo "### P11 DAST (ZAP baseline)" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Target: \`${TARGET}\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Alerts: $(echo "$counts" | jq -r '"High="+(.high|tostring)+", Medium="+(.medium|tostring)+", Low="+(.low|tostring)+", Info="+(.info|tostring)')" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### P11 DAST (ZAP baseline)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- No JSON report found (zap_baseline.json missing)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload P11 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: P11_EVIDENCE
+          path: EVIDENCE/P11
+          if-no-files-found: warn
