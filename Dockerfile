@@ -23,10 +23,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl=8.14.1-2+deb13u2 \
-    && rm -rf /var/lib/apt/lists/*
-
 RUN groupadd -r app && useradd -r -g app app
 
 COPY --from=build /wheels /wheels
@@ -40,6 +36,15 @@ USER app
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD curl -f http://127.0.0.1:8000/health || exit 1
+  CMD python -c "import urllib.request,sys; \
+  import socket; \
+  socket.setdefaulttimeout(2); \
+  \
+  import urllib.error; \
+  \
+  try: urllib.request.urlopen('http://127.0.0.1:8000/healthz'); \
+  except Exception: sys.exit(1); \
+  sys.exit(0)"
+
 
 CMD ["uvicorn", "studynotes.main:app", "--host", "0.0.0.0", "--port", "8000"]
